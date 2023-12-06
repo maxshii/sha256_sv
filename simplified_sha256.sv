@@ -16,7 +16,7 @@ parameter integer SIZE = NUM_OF_WORDS*32;
 // or modify these variables. Code below is more as a reference.
 
 // Local variables
-logic [31:0] w[64];
+logic [31:0] w[16];
 logic [31:0] message[16];
 logic [31:0] wt;
 //logic [31:0] S0,S1;
@@ -30,7 +30,7 @@ logic [ 7:0] num_blocks;
 logic        enable_write;
 logic [15:0] present_addr;
 logic [31:0] present_write_data;
-logic [31:0] data_read[8];
+//logic [31:0] data_read[8];
 logic [31:0] paddedBits;
 //logic [ 7:0] tstep;
 
@@ -160,9 +160,9 @@ always_comb begin
 					wt = message[i];
 				end
 				else begin
-					s0 = ror(w[i-15], 7) ^ ror(w[i-15], 18) ^ (w[i-15] >> 3);
-					s1 = ror(w[i-2], 17) ^ ror(w[i-2], 19) ^ (w[i-2] >> 10);
-					wt = w[i-16] + s0 + w[i-7] + s1;
+					s0 = ror(w[1], 7) ^ ror(w[1], 18) ^ (w[1] >> 3);
+					s1 = ror(w[14], 17) ^ ror(w[14], 19) ^ (w[14] >> 10);
+					wt = w[0] + s0 + w[9] + s1;
 				end
 				
 
@@ -411,7 +411,10 @@ always_ff @(posedge clk, negedge rst_n) begin
 				F <= f;
 				G <= g;
 				H <= h;
-				w[i] <= wt;
+				for(int n = 0; n<15; n++) begin
+					w[n] <= w[n+1];
+				end
+				w[15] <= wt;
 				i <= i+1;
 				next_state<= COMPUTE;
 			end
