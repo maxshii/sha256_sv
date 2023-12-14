@@ -6,10 +6,8 @@ module bitcoin_hash (input logic        clk, reset_n, start,
                      input logic [31:0] memory_read_data);
 
 parameter num_nonces = 16;
-enum logic [2:0] {IDLE, WAIT, BLOCK1, BLOCK2, COMPUTE, WRITE}
-
-logic [ 4:0] state;
-logic [31:0] hash_out[num_nonces];
+enum logic [2:0] {IDLE, WAIT, BLOCK, PIPE, COMPUTE, WRITE} next_state;
+//logic [31:0] hash_out[num_nonces];
 
 parameter int k[64] = '{
     32'h428a2f98,32'h71374491,32'hb5c0fbcf,32'he9b5dba5,32'h3956c25b,32'h59f111f1,32'h923f82a4,32'hab1c5ed5,
@@ -32,30 +30,37 @@ parameter int k[64] = '{
 
 // Local variables
 logic [31:0] w[16];
+logic [31:0] w1[16];
 logic [31:0] message[16];
+logic [31:0] message1[16];
 logic [31:0] wt;
-logic [31:0] hash[8]; 
+logic [31:0] wt1;
+logic [31:0] fhash[8]; 
+logic [31:0] hash[16][8];
 logic [31:0] A, B, C, D, E, F, G, H;
 logic [31:0] a,b,c,d,e,f,g,h;
+logic [31:0] A1, B1, C1, D1, E1, F1, G1, H1;
+logic [31:0] a1,b1,c1,d1,e1,f1,g1,h1;
 logic [6:0] i;
-logic [2:0] count;
+logic [6:0] count;
+logic [6:0] next_count;
 logic [15:0] offset; // in word address
-logic [ 7:0] num_blocks;
+
 logic        enable_write;
 logic [15:0] present_addr;
 logic [31:0] present_write_data;
-logic [31:0] paddedBits;
+//logic [31:0] paddedBits;
 
 
-
+assign next_count = count + 1;
 
 
 // Generate request to memory
 // for reading from memory to get original message
 // for writing final computed has value
-assign memory_clk = clk;
+assign mem_clk = clk;
 assign memory_addr = present_addr + offset;
-assign memory_we = enable_write;
+assign mem_we = enable_write;
 assign memory_write_data = present_write_data;
 
 
@@ -108,6 +113,40 @@ always_comb begin
 		{a,b,c,d,e,f,g,h} = sha256_op(a, b, c, d, e, f, g, h, wt, i);	
 end
 
+always_comb begin
+	
+		logic [31:0] s1, s0;
+	
+		
+		
+
+				
+				if(i < 16) begin
+					wt1 = message1[i];
+				end
+				else begin
+					s0 = ror(w1[1], 7) ^ ror(w1[1], 18) ^ (w1[1] >> 3);
+					s1 = ror(w1[14], 17) ^ ror(w1[14], 19) ^ (w1[14] >> 10);
+					wt1 = w1[0] + s0 + w1[9] + s1;
+				end
+				
+
+			
+			a1 = A1;
+			b1 = B1;
+			c1 = C1;
+			d1 = D1;
+			e1 = E1;
+			f1 = F1;
+			g1 = G1;
+			h1 = H1;
+		
+
+	
+		{a1,b1,c1,d1,e1,f1,g1,h1} = sha256_op(a1, b1, c1, d1, e1, f1, g1, h1, wt1, i);	
+end
+
+
 		
 
 // Right Rotation Example : right rotate input x by r
@@ -132,8 +171,8 @@ endfunction
 // SHA-256 FSM 
 // Get a BLOCK from the memory, COMPUTE Hash output using SHA256 function
 // and write back hash value back to memory
-always_ff @(posedge clk, negedge rst_n) begin
-  if (!rst_n) begin
+always_ff @(posedge clk, negedge reset_n) begin
+  if (!reset_n) begin
 		enable_write <= 0;
 		present_write_data <= 0;
 		present_addr <= 0;
@@ -145,14 +184,14 @@ always_ff @(posedge clk, negedge rst_n) begin
 		// Initialize hash values h0 to h7 and a to h, other variables and memory we, address offset, etc
 		IDLE: begin 
 			if(start) begin 
-				hash[0] <= 32'h6a09e667; 
-				hash[1] <= 32'hbb67ae85; 
-				hash[2] <= 32'h3c6ef372;
-				hash[3] <= 32'ha54ff53a;
-				hash[4] <= 32'h510e527f;
-				hash[5] <= 32'h9b05688c;
-				hash[6] <= 32'h1f83d9ab;
-				hash[7] <= 32'h5be0cd19;
+				fhash[0] <= 32'h6a09e667; 
+				fhash[1] <= 32'hbb67ae85; 
+				fhash[2] <= 32'h3c6ef372;
+				fhash[3] <= 32'ha54ff53a;
+				fhash[4] <= 32'h510e527f;
+				fhash[5] <= 32'h9b05688c;
+				fhash[6] <= 32'h1f83d9ab;
+				fhash[7] <= 32'h5be0cd19;
 				
 				A <= 32'h6a09e667; 
 				B <= 32'hbb67ae85; 
@@ -166,7 +205,7 @@ always_ff @(posedge clk, negedge rst_n) begin
 				i <= 0;
 				count <= 0;
 				offset <= 0;
-				present_addr <= input_addr;
+				present_addr <= header_addr;
 				next_state <= WAIT;
 		   end
 		end
@@ -177,13 +216,33 @@ always_ff @(posedge clk, negedge rst_n) begin
 		// SHA-256 FSM 
 		// Get a BLOCK from the memory, COMPUTE Hash output using SHA256 function    
 		// and write back hash value back to memory
-		BLOCK1: begin
+		BLOCK: begin
 		// Fetch message in 512-bit block size
 		// For each of 512-bit block initiate hash value computation
-			
-			if(i < 16) begin
+			if(count != 0 && i == 3) begin
+				message[3] = 32'h00000000;
+				message[4] = 32'h80000000;
+				for(int i = 5; i < 15; i++) begin
+					message[i] = 32'h00000000;
+				end
+				message[15] = 32'd640;
+				A <= fhash[0];
+				B <= fhash[1];
+				C <= fhash[2];
+				D <= fhash[3];
+				E <= fhash[4];
+				F <= fhash[5];
+				G <= fhash[6];
+				H <= fhash[7];
+				i <= 0;
+		//		offset <= offset - 1;
+
+				next_state <= COMPUTE;
 				
-				 
+			end
+			else if(i < 16) begin
+				
+				 // Get message of fixed part
 					message[i] <= memory_read_data;
 					offset <= offset + 1;
 					next_state <= BLOCK;
@@ -194,14 +253,14 @@ always_ff @(posedge clk, negedge rst_n) begin
 			
 			
 				
-				A <= hash[0];
-				B <= hash[1];
-				C <= hash[2];
-				D <= hash[3];
-				E <= hash[4];
-				F <= hash[5];
-				G <= hash[6];
-				H <= hash[7];
+				A <= fhash[0];
+				B <= fhash[1];
+				C <= fhash[2];
+				D <= fhash[3];
+				E <= fhash[4];
+				F <= fhash[5];
+				G <= fhash[6];
+				H <= fhash[7];
 				i <= 0;
 		//		offset <= offset - 1;
 
@@ -225,26 +284,78 @@ always_ff @(posedge clk, negedge rst_n) begin
 			
 			
 			if(i == 64) begin //finished processing block
-				count <= count + 1;
-				hash[0] <= hash[0] + A;
-				hash[1] <= hash[1] + B;
-				hash[2] <=	hash[2] + C;
-				hash[3] <=	hash[3] + D;
-				hash[4] <= hash[4] + E;
-				hash[5] <= hash[5] + F;
-				hash[6] <= hash[6] + G;
-				hash[7] <= hash[7] + H;
+				
+				
 					
-				if(count == num_blocks-1) begin					
+				if(count != 0) begin
+					// hash of the first nonce
+					hash[0][0] <= 32'h6a09e667;
+					hash[0][1] <= 32'hbb67ae85; 
+					hash[0][2] <=	32'h3c6ef372;
+					hash[0][3] <=	32'ha54ff53a;
+					hash[0][4] <= 32'h510e527f;
+					hash[0][5] <= 32'h9b05688c;
+					hash[0][6] <= 32'h1f83d9ab;
+					hash[0][7] <= 32'h5be0cd19;
+					
+					
+					// Use hash of first nonce to initialize values for computing hash of first 8 word hash
+					A1 <= 32'h6a09e667; 
+					B1 <= 32'hbb67ae85; 
+					C1 <= 32'h3c6ef372;
+					D1 <= 32'ha54ff53a;
+					E1 <= 32'h510e527f;
+					F1 <= 32'h9b05688c;
+					G1 <= 32'h1f83d9ab;
+					H1 <= 32'h5be0cd19;
+		
+					message1[0] <= fhash[0] + A;
+					message1[1] <= fhash[1] + B;
+					message1[2] <=	fhash[2] + C;
+					message1[3] <=	fhash[3] + D;
+					message1[4] <= fhash[4] + E;
+					message1[5] <= fhash[5] + F;
+					message1[6] <= fhash[6] + G;
+					message1[7] <= fhash[7] + H;
+					
+					message1[8] <= 32'h80000000;
+					for(int i = 9; i<15; i++) begin
+						message1[i] <= 32'h00000000;
+					end
+					message1[15] <= 32'd256;
+					
 					offset <= 0;
-					enable_write <= 1;
-
-					present_addr <= hash_addr-1;
-					next_state <= WRITE;
+					i <= 0;
+					//enable_write <= 1;
+					
+					//initialize values to compute hash of second nonce
+					message[3] <= message[3]+1;
+					A <= fhash[0];
+					B <= fhash[1];
+					C <= fhash[2];
+					D <= fhash[3];
+					E <= fhash[4];
+					F <= fhash[5];
+					G <= fhash[6];
+					H <= fhash[7];
+					
+					count <= 0;
+					//present_addr <= hash_addr-1;
+					next_state <= PIPE;
 				end
 				else begin
+					// compute hash of fixed part
+					fhash[0] <= fhash[0] + A;
+					fhash[1] <= fhash[1] + B;
+					fhash[2] <=	fhash[2] + C;
+					fhash[3] <=	fhash[3] + D;
+					fhash[4] <= fhash[4] + E;
+					fhash[5] <= fhash[5] + F;
+					fhash[6] <= fhash[6] + G;
+					fhash[7] <= fhash[7] + H;
 					offset <= offset-1;
 					i <= 0;
+					count <= count+1;
 					next_state <= WAIT;
 				end
 					
@@ -270,13 +381,124 @@ always_ff @(posedge clk, negedge rst_n) begin
 			
 					
 		end
+		PIPE: begin
+		
+			if(i == 64) begin
+				count <= count + 1;
+				
+					
+				if(count != 15) begin
+					// final hash(1b) of nonce #count 
+					hash[count][0] <= 32'h6a09e667 + A1;
+					hash[count][1] <= 32'hbb67ae85 + B1;
+					hash[count][2] <=	32'h3c6ef372 + C1;
+					hash[count][3] <=	32'ha54ff53a + D1;
+					hash[count][4] <= 32'h510e527f + E1;
+					hash[count][5] <= 32'h9b05688c + F1;
+					hash[count][6] <= 32'h1f83d9ab + G1;
+					hash[count][7] <= 32'h5be0cd19 + H1;
+					
+					// Use hash(2a) to initialize values for computing hash of 8 word hash 
+					
+					A1 <= 32'h6a09e667; 
+					B1 <= 32'hbb67ae85; 
+					C1 <= 32'h3c6ef372;
+					D1 <= 32'ha54ff53a;
+					E1 <= 32'h510e527f;
+					F1 <= 32'h9b05688c;
+					G1 <= 32'h1f83d9ab;
+					H1 <= 32'h5be0cd19;
+					
+					message1[0] <= fhash[0] + A;
+					message1[1] <= fhash[1] + B;
+					message1[2] <=	fhash[2] + C;
+					message1[3] <=	fhash[3] + D;
+					message1[4] <= fhash[4] + E;
+					message1[5] <= fhash[5] + F;
+					message1[6] <= fhash[6] + G;
+					message1[7] <= fhash[7] + H;
+					
+					message1[8] <= 32'h80000000;
+					for(int i = 9; i<15; i++) begin
+						message1[i] <= 32'h00000000;
+					end
+					message1[15] <= 32'd256;
+					
+					offset <= 0;
+					i <= 0;
+					//enable_write <= 1;
+					
+					//initialize values to compute hash of second nonce
+					message[3] <= message[3]+1;
+					A <= fhash[0];
+					B <= fhash[1];
+					C <= fhash[2];
+					D <= fhash[3];
+					E <= fhash[4];
+					F <= fhash[5];
+					G <= fhash[6];
+					H <= fhash[7];
+
+
+					
+					next_state <= PIPE;
+				end
+				else begin
+					hash[count][0] <= 32'h6a09e667 + A1;
+					hash[count][1] <= 32'hbb67ae85 + B1;
+					hash[count][2] <=	32'h3c6ef372 + C1;
+					hash[count][3] <=	32'ha54ff53a + D1;
+					hash[count][4] <= 32'h510e527f + E1;
+					hash[count][5] <= 32'h9b05688c + F1;
+					hash[count][6] <= 32'h1f83d9ab + G1;
+					hash[count][7] <= 32'h5be0cd19 + H1;
+					offset <= 0;
+					i <= 0;
+					enable_write <= 1;
+					present_addr <= hash_out_addr-1;
+					next_state <= WRITE;
+				end
+			end 
+			else begin
+				// Compute hash from new nonce
+				A <= a;
+				B <= b;
+				C <= c;
+				D <= d;
+				E <= e;
+				F <= f;
+				G <= g;
+				H <= h;
+				for(int n = 0; n<15; n++) begin
+					w[n] <= w[n+1];
+				end
+				w[15] <= wt;
+				
+				// Compute hash from 8 word hash
+				A1 <= a1;
+				B1 <= b1;
+				C1 <= c1;
+				D1 <= d1;
+				E1 <= e1;
+				F1 <= f1;
+				G1 <= g1;
+				H1 <= h1;
+				for(int n = 0; n<15; n++) begin
+					w1[n] <= w1[n+1];
+				end
+				w1[15] <= wt1;
+				i <= i+1;
+				next_state<= PIPE;
+			end
+			
+		end
 
 		// h0 to h7 each are 32 bit hashes, which makes up total 256 bit value
 		// h0 to h7 after compute stage has final computed hash value
 		// write back these h0 to h7 to memory starting from output_addr
 		WRITE: begin
 		
-				if(offset == 8) begin
+				if(offset == 16) begin
 					enable_write <= 0;
 					next_state <= IDLE;
 				end
@@ -284,7 +506,7 @@ always_ff @(posedge clk, negedge rst_n) begin
 					
 					offset <= offset+1;
 					
-					present_write_data <= hash[offset];
+					present_write_data <= hash[offset][0];
 					
 					
 					next_state <= WRITE;
