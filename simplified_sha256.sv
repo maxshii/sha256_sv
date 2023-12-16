@@ -96,124 +96,38 @@ function automatic logic [255:0] sha256_op(input logic [31:0] a, b, c, d, e, f, 
 	end
 endfunction
 
-/*
-function automatic logic [31:0] word_expansion(input logic [31:0] m[16], 
-											input logic [31:0] w[64],
-                                 input logic [7:0] t);
-	logic [31:0] s1, s0;
-	begin
-		if(t < 16) begin
-			word_expansion = m[t];
-		end
-		else begin
-			s0 = ror(w[t-15], 7) ^ ror(w[t-15], 18) ^ (w[t-15] >> 3);
-			s1 = ror(w[t-2], 17) ^ ror(w[t-2], 19) ^ (w[t-2] >> 10);
-			word_expansion = w[t-16] + s0 + w[t-7] + s1;
-		end
-	end
-endfunction*/
-/*
-function automatic process64(input logic [31:0] ha[8], 
-																	input logic [31:0] a, b, c, d, e, f, g, h, 
-																	output logic [31:0] h0,h1,h2,h3,h4,h5,h6,h7,
-											input logic [31:0] m[16]);
-		logic [7:0] t;
-		logic [31:0] W[64];
-
-		begin
-			for(t = 0; t < 64; t++) begin
-				W[t] = word_expansion(m, W, t);
-				
-				
-			end
-			
-			for(t=0; t < 64; t++)
-			begin
-				{a,b,c,d,e,f,g,h} = sha256_op(a, b, c, d, e, f, g, h, W[t], t);
-			end
-			
-		h0 = ha[0] + a;
-		h1 = ha[1] + b;
-		h2 =	ha[2] + c;
-		h3 =	ha[3] + d;
-		h4 = ha[4] + e;
-		h5 = ha[5] + f;
-		h6 = ha[6] + g;
-		h7 = ha[7] + h;
-		
-		end
-		
-endfunction*/
 
 always_comb begin
-		//logic [7:0] t;
-		
-		
-		
-		logic [31:0] s1, s0;
-	
-		
-		
 
-				
-				if(i < 16) begin
-					wt = message[i];
-				end
-				else begin
-					s0 = ror(w[1], 7) ^ ror(w[1], 18) ^ (w[1] >> 3);
-					s1 = ror(w[14], 17) ^ ror(w[14], 19) ^ (w[14] >> 10);
-					wt = w[0] + s0 + w[9] + s1;
-				end
-				
+	logic [31:0] s1, s0;
+
+		// calculate wt for specific i
+			if(i < 16) begin
+				wt = message[i];
+			end
+			else begin
+				s0 = ror(w[1], 7) ^ ror(w[1], 18) ^ (w[1] >> 3);
+				s1 = ror(w[14], 17) ^ ror(w[14], 19) ^ (w[14] >> 10);
+				wt = w[0] + s0 + w[9] + s1;
+			end
+			
+	// sha operations
+	{a,b,c,d,e,f,g,h} = sha256_op(A, B, C, D, E, F, G, H, wt, i);
 
 			
-			a = A;
-			b = B;
-			c = C;
-			d = D;
-			e = E;
-			f = F;
-			g = G;
-			h = H;
-		
-
-	
-		{a,b,c,d,e,f,g,h} = sha256_op(a, b, c, d, e, f, g, h, wt, i);
-
-			
-		/*data_read[0] = hash[0] + a;
-		data_read[1] = hash[1] + b;
-		data_read[2] =	hash[2] + c;
-		data_read[3] =	hash[3] + d;
-		data_read[4] = hash[4] + e;
-		data_read[5] = hash[5] + f;
-		data_read[6] = hash[6] + g;
-		data_read[7] = hash[7] + h;*/
-		
-		/*data_read[0] = a;
-		data_read[1] = b;
-		data_read[2] =	c;
-		data_read[3] =	d;
-		data_read[4] = e;
-		data_read[5] = f;
-		data_read[6] = g;
-		data_read[7] = h;*/
-		
 		
 end
 
 always_comb begin
-		
-		begin
-			
-			if(memory_addr - input_addr == NUM_OF_WORDS + 1)
-				paddedBits = 32'h80000000;
-			else if(count == num_blocks-1 && i == 15) 
-				paddedBits = SIZE;
-			else
-				paddedBits = 32'h00000000;
-			
-		end
+
+	// determine what bits should be padded
+	if(memory_addr - input_addr == NUM_OF_WORDS + 1)
+		paddedBits = 32'h80000000;
+	else if(count == num_blocks-1 && i == 15) 
+		paddedBits = SIZE;
+	else
+		paddedBits = 32'h00000000;
+	
 end
 		
 
@@ -235,21 +149,6 @@ end
 endfunction
 
 
-/*
-always_ff @(posedge clk, negedge rst_n)
-begin
-  if (!rst_n) begin
-    state <= IDLE;
-
-  end 
-  else begin 
-	state <= next_state;
-	
-  end
-end
-*/
-
-
 // SHA-256 FSM 
 // Get a BLOCK from the memory, COMPUTE Hash output using SHA256 function
 // and write back hash value back to memory
@@ -266,6 +165,8 @@ always_ff @(posedge clk, negedge rst_n) begin
 		// Initialize hash values h0 to h7 and a to h, other variables and memory we, address offset, etc
 		IDLE: begin 
 			if(start) begin 
+			
+				// assign initial values
 				hash[0] <= 32'h6a09e667; 
 				hash[1] <= 32'hbb67ae85; 
 				hash[2] <= 32'h3c6ef372;
@@ -303,12 +204,12 @@ always_ff @(posedge clk, negedge rst_n) begin
 		// For each of 512-bit block initiate hash value computation
 
 			if((memory_addr - input_addr > NUM_OF_WORDS)) begin				
-					
+					// if all words from memory have been read, start padding message
 					next_state <= PAD;
 				end	
 			else if(i < 16) begin
 				
-				 
+					// read word from memory
 					message[i] <= memory_read_data;
 					offset <= offset + 1;
 					next_state <= BLOCK;
@@ -317,8 +218,7 @@ always_ff @(posedge clk, negedge rst_n) begin
 			end
 			else begin
 			
-			
-				
+				// message has been filled so start computing
 				A <= hash[0];
 				B <= hash[1];
 				C <= hash[2];
@@ -328,7 +228,6 @@ always_ff @(posedge clk, negedge rst_n) begin
 				G <= hash[6];
 				H <= hash[7];
 				i <= 0;
-		//		offset <= offset - 1;
 
 				next_state <= COMPUTE;
 			end
@@ -336,38 +235,37 @@ always_ff @(posedge clk, negedge rst_n) begin
 
 		end
 		
+		
+		PAD: begin
+		
+				if(i == 15) begin
+					// finish padding and go to compute
+					message[i] <= paddedBits;
+						
+					next_state <= COMPUTE;
+					i <= 0;
+					A <= hash[0];
+					B <= hash[1];
+					C <= hash[2];
+					D <= hash[3];
+					E <= hash[4];
+					F <= hash[5];
+					G <= hash[6];
+					H <= hash[7];
+				end
+				else begin
+				// pad message
+					message[i] <= paddedBits;
+					next_state <= PAD;
+					i <= i + 1;
+					offset <= offset + 1;
+				end
+			
+		end
 		// For each block compute hash function
 		// Go back to BLOCK stage after each block hash computation is completed and if
 		// there are still number of message blocks available in memory otherwise
 		// move to WRITE stage
-		PAD: begin
-				
-						
-						
-						if(i == 15) begin
-							
-							message[i] <= paddedBits;
-								
-							next_state <= COMPUTE;
-							i <= 0;
-							A <= hash[0];
-							B <= hash[1];
-							C <= hash[2];
-							D <= hash[3];
-							E <= hash[4];
-							F <= hash[5];
-							G <= hash[6];
-							H <= hash[7];
-						//	offset <= offset - 1;
-						end
-						else begin
-							message[i] <= paddedBits;
-							next_state <= PAD;
-							i <= i + 1;
-							offset <= offset + 1;
-						end
-			
-		end
 		COMPUTE: begin
 		// 64 processing rounds steps for 512-bit block 
 		
@@ -378,6 +276,8 @@ always_ff @(posedge clk, negedge rst_n) begin
 			
 			if(i == 64) begin //finished processing block
 				count <= count + 1;
+				
+				//hash values are available now so assign them
 				hash[0] <= hash[0] + A;
 				hash[1] <= hash[1] + B;
 				hash[2] <=	hash[2] + C;
@@ -387,14 +287,14 @@ always_ff @(posedge clk, negedge rst_n) begin
 				hash[6] <= hash[6] + G;
 				hash[7] <= hash[7] + H;
 					
-				if(count == num_blocks-1) begin					
+				if(count == num_blocks-1) begin			// write if all message blocks have been computed		
 					offset <= 0;
 					enable_write <= 1;
 
 					present_addr <= hash_addr-1;
 					next_state <= WRITE;
 				end
-				else begin
+				else begin // otherwise go get another block
 					offset <= offset-1;
 					i <= 0;
 					next_state <= WAIT;
@@ -402,7 +302,8 @@ always_ff @(posedge clk, negedge rst_n) begin
 					
 			end
 			else begin
-			
+				
+				//do one round of processing
 				A <= a;
 				B <= b;
 				C <= c;
@@ -411,6 +312,8 @@ always_ff @(posedge clk, negedge rst_n) begin
 				F <= f;
 				G <= g;
 				H <= h;
+				
+				//assign w and shift it down
 				for(int n = 0; n<15; n++) begin
 					w[n] <= w[n+1];
 				end
@@ -427,13 +330,13 @@ always_ff @(posedge clk, negedge rst_n) begin
 		// h0 to h7 after compute stage has final computed hash value
 		// write back these h0 to h7 to memory starting from output_addr
 		WRITE: begin
-		
-				if(offset == 8) begin
+			
+				if(offset == 8) begin // completed write so go to IDLE
 					enable_write <= 0;
 					next_state <= IDLE;
 				end
 				else begin
-					
+					// write one memory address then go to next address
 					offset <= offset+1;
 					
 					present_write_data <= hash[offset];
