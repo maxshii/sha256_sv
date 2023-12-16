@@ -1,4 +1,4 @@
-module sha_256 #(parameter integer NUM_OF_WORDS = 16)(
+module sha_256 (
  input logic  clk, reset_n, start, first_or_sec,
  input logic[31:0] pre_hash[8],
  input logic  [31:0] message[19],
