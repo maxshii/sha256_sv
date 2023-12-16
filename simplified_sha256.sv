@@ -209,7 +209,7 @@ always_comb begin
 			if(memory_addr - input_addr == NUM_OF_WORDS + 1)
 				paddedBits = 32'h80000000;
 			else if(count == num_blocks-1 && i == 15) 
-				paddedBits <= SIZE;
+				paddedBits = SIZE;
 			else
 				paddedBits = 32'h00000000;
 			
